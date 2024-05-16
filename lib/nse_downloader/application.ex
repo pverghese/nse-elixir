@@ -8,6 +8,7 @@ defmodule NseDownloader.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      NseDownloader.Repo
       # Starts a worker by calling: NseDownloader.Worker.start_link(arg)
       # {NseDownloader.Worker, arg}
     ]
