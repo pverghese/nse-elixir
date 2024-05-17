@@ -4,7 +4,7 @@ defmodule NseDownloader.Repo.Migrations.CreateStocksTable do
   def change do
     create table(:stocks, primary_key: false ) do
       add :symbol, :string, primary_key: true
-      add :series, :string
+      add :series, :string, primary_key: true
       add :open, :float
       add :high, :float
       add :low, :float
@@ -17,7 +17,7 @@ defmodule NseDownloader.Repo.Migrations.CreateStocksTable do
       add :totaltrades, :integer
       add :isin, :string
     end
-    create unique_index(:stocks, [:symbol, :timestamp])
+    create unique_index(:stocks, [:symbol, :series, :timestamp])
 
 
   end

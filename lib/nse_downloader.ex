@@ -3,37 +3,43 @@ defmodule NseDownloader do
   `NseDownloader` used for downloading bhavcopy data
   """
 
-
-  @headers  [
-    {"Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"},
+  @headers [
+    {"Accept",
+     "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"},
     {"Accept-encoding", "gzip, deflate, br"},
     {"Connection", "keep-alive"},
-    {"User-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.125 Safari/537.36"}]
+    {"User-agent",
+     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.125 Safari/537.36"}
+  ]
 
   def string_components_for_date({year, month, day}) do
-    month = case month do
-      1 -> "JAN"
-      2 -> "FEB"
-      3 -> "MAR"
-      4 -> "APR"
-      5 -> "MAY"
-      6 -> "JUN"
-      7 -> "JUL"
-      8 -> "AUG"
-      9 -> "SEP"
-      10 -> "OCT"
-      11 -> "NOV"
-      12 -> "DEC"
-    end
-    day = Integer.to_string(day) |> String.pad_leading(2,"0")
+    month =
+      case month do
+        1 -> "JAN"
+        2 -> "FEB"
+        3 -> "MAR"
+        4 -> "APR"
+        5 -> "MAY"
+        6 -> "JUN"
+        7 -> "JUL"
+        8 -> "AUG"
+        9 -> "SEP"
+        10 -> "OCT"
+        11 -> "NOV"
+        12 -> "DEC"
+      end
+
+    day = Integer.to_string(day) |> String.pad_leading(2, "0")
     {year, month, day}
-
   end
-  def download_for_date(%{year: year, month: month, day: day}) do
-    {year, month, day} = string_components_for_date({year, month, day})
-    url = "https://nsearchives.nseindia.com/content/historical/EQUITIES/#{year}/#{month}/cm#{day}#{month}#{year}bhav.csv.zip"
 
-    case HTTPoison.request(:get, url,"", @headers, timeout: 10000) do
+  def download_for_date(date) do
+    {year, month, day} = string_components_for_date({date.year, date.month, date.day})
+
+    url =
+      "https://nsearchives.nseindia.com/content/historical/EQUITIES/#{year}/#{month}/cm#{day}#{month}#{year}bhav.csv.zip"
+
+    case HTTPoison.request(:get, url, "", @headers, timeout: 10000) do
       {:ok, resp} -> :zip.unzip(resp.body, [:memory])
       {:error, msg} -> {:error, msg}
     end
@@ -48,46 +54,118 @@ defmodule NseDownloader do
       {:ok, %{year: 2024, month: 1, day: 30}}
 
   """
-  @spec verify(String.t()) :: {:ok, %{year: pos_integer(), month: pos_integer(), day: pos_integer()}} | {:error, String.t()}
+  @spec verify(Date.t()) :: {:ok, Date.t()} | {:error, String.t()}
   def verify(date) do
-    [year, month, day] = String.split(date, "-", trim: true) |> Enum.map(& String.to_integer(&1))
+    [year, month, day] = String.split(date, "-", trim: true) |> Enum.map(&String.to_integer(&1))
 
-    cond do
-      year < 1990 or year > 2030 -> {:error, "year not in range"}
-      month < 1 or month > 12 -> {:error, "Month not in range"}
-      day < 1 or day > 31 -> {:error, "day not in range"}
-      true -> {:ok, %{year: year, month: month, day: day}}
+    Date.new(year, month, day)
+
+  end
+
+  def create_item([
+        symbol,
+        series,
+        open,
+        high,
+        low,
+        close,
+        last,
+        prev,
+        tottrdqty,
+        tottrdval,
+        timestamp,
+        qty,
+        isin
+      ]) do
+    [d, m, y] = timestamp |> String.split("-")
+
+    month_map = %{
+      "JAN" => 1,
+      "FEB" => 2,
+      "MAR" => 3,
+      "APR" => 4,
+      "MAY" => 5,
+      "JUN" => 6,
+      "JUL" => 7,
+      "AUG" => 8,
+      "SEP" => 9,
+      "OCT" => 10,
+      "NOV" => 11,
+      "DEC" => 12
+    }
+
+    {:ok, date} = Date.new(String.to_integer(y), month_map[m], String.to_integer(d))
+
+    with {open, ""} <- Float.parse(open),
+         {high, ""} <- Float.parse(high),
+         {low, ""} <- Float.parse(low),
+         {close, ""} <- Float.parse(close),
+         {last, ""} <- Float.parse(last),
+         {prev, ""} <- Float.parse(prev),
+         {tottrdqty, ""} <- Integer.parse(tottrdqty),
+         {tottrdval, ""} <- Float.parse(tottrdval),
+         {qty, ""} <- Integer.parse(qty) do
+      [
+        symbol: symbol,
+        series: series,
+        open: open,
+        high: high,
+        low: low,
+        close: close,
+        last: last,
+        prevclose: prev,
+        tottrdqty: tottrdqty,
+        tottrdval: tottrdval,
+        timestamp: date,
+        totaltrades: qty,
+        isin: isin
+      ]
+    else
+      {:error, :invalid_date} -> {:error, "Invalid date provided"}
     end
+  end
 
+  def insert_into_db(val) do
+    NseDownloader.Repo.insert_all(NseDownloader.Stock, val,
+      on_conflict: :replace_all,
+      conflict_target: [:symbol, :series, :timestamp]
+    )
   end
 
   def download(date) do
     with {:ok, f} <- verify(date),
-         {:ok, [{fname, val}]} <- download_for_date(f),
-         exists <- File.exists?("./temp") do
-          case exists do
-            true -> File.write("./temp/#{fname |> to_string}", val)
-            false -> a = IO.getn(:stdio, "Create temp directory and write file(y/n)")
-              case a do
-                "y" ->
-                  File.mkdir("./temp")
-                  File.write("./temp/#{fname |> to_string}", val)
-                _ -> {:error, "./temp directory does not exist"}
-              end
-          end
+         {:ok, [{_fname, val}]} <- download_for_date(f) do
+      {:ok,
+       val
+       |> String.split("\n", trim: true)
+       |> Enum.drop(1)
+       |> Enum.map(&String.split(&1, ",", trim: true))
+       |> Enum.map(&create_item(&1))}
     else
-          {:error, _} -> {:error, "Error while downloading. Data might not exist"}
+      {:error, {:EXIT,_}} -> {:error, "Data doesn't exist for date"}
+      {:error, msg} -> {:error, msg}
     end
-
   end
-  @spec download(String.t(), String.t()) :: :ok
+
+  @spec download(String.t(), String.t()) :: {:ok, [any()]} | {:error, String.t()}
   def download(from, to) do
     with {:ok, f} <- verify(from),
-      {:ok , t} <- verify(to) do
-        IO.puts("from: #{f.year}-#{f.month}-#{f.day}")
-        IO.puts("to: #{t.year}-#{t.month}-#{t.day}")
-      else
-        {:error, msg} -> IO.puts("Error: #{msg}")
+         {:ok, t} <- verify(to),
+         :lt <- Date.compare(f,t),
+         r = Date.range(f, t, 1) do
+      dates = r |> Enum.to_list() |> Enum.map(& Date.to_string(&1))
+      res = for d <- dates do
+        IO.puts("Downloading for: #{d}")
+        case download(d) do
+          {:ok, val} -> {d, insert_into_db(val)}
+          {:error, _} -> {d, :error}
+        end
       end
+      {:ok, res}
+    else
+      {:error, msg} -> {:error, msg}
+      :gt -> {:error, "first date should be lesser than second date"}
+      :eq -> {:error, "first date should be lesser than second date"}
+    end
   end
 end

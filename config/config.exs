@@ -6,4 +6,4 @@ config :nse_downloader, NseDownloader.Repo,
   password: "postgres",
   hostname: "localhost"
 
-config :nse_downloader, ecto_repos: [NseDownloader.Repo]
+config(:nse_downloader, ecto_repos: [NseDownloader.Repo])

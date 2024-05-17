@@ -4,7 +4,7 @@ defmodule NseDownloader.Stock do
   @primary_key false
   schema "stocks" do
     field :symbol, :string, primary_key: true
-    field :series, :string
+    field :series, :string, primary_key: true
     field :open, :float
     field :high, :float
     field :low, :float
