@@ -54,7 +54,7 @@ defmodule NseDownloader do
       {:ok, %{year: 2024, month: 1, day: 30}}
 
   """
-  @spec verify(Date.t()) :: {:ok, Date.t()} | {:error, String.t()}
+  @spec verify(String.t()) :: {:ok, Date.t()} | {:error, any()}
   def verify(date) do
     [year, month, day] = String.split(date, "-", trim: true) |> Enum.map(&String.to_integer(&1))
 
@@ -121,7 +121,7 @@ defmodule NseDownloader do
         isin: isin
       ]
     else
-      {:error, :invalid_date} -> {:error, "Invalid date provided"}
+      :error -> {:error, "Invalid date provided"}
     end
   end
 
@@ -132,6 +132,7 @@ defmodule NseDownloader do
     )
   end
 
+  @spec download(String.t()) :: {:ok, any()} | {:error, any()}
   def download(date) do
     with {:ok, f} <- verify(date),
          {:ok, [{_fname, val}]} <- download_for_date(f) do
@@ -147,7 +148,7 @@ defmodule NseDownloader do
     end
   end
 
-  @spec download(String.t(), String.t()) :: {:ok, [any()]} | {:error, String.t()}
+  @spec download(String.t(), String.t()) :: {:ok, [any()]} | {:error, any()}
   def download(from, to) do
     with {:ok, f} <- verify(from),
          {:ok, t} <- verify(to),
