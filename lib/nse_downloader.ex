@@ -12,6 +12,7 @@ defmodule NseDownloader do
      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.125 Safari/537.36"}
   ]
 
+  @spec string_components_for_date({non_neg_integer(), non_neg_integer(), non_neg_integer()}) :: {String.t(), String.t(), String.t()}
   def string_components_for_date({year, month, day}) do
     month =
       case month do
@@ -33,6 +34,7 @@ defmodule NseDownloader do
     {year, month, day}
   end
 
+  @spec download_for_date(Date.t()) :: {:ok, [{charlist(), String.t()}]} | {:error, any()}
   def download_for_date(date) do
     {year, month, day} = string_components_for_date({date.year, date.month, date.day})
 
@@ -51,7 +53,7 @@ defmodule NseDownloader do
   ## Examples
 
       iex> NseDownloader.verify("2024-01-30")
-      {:ok, %{year: 2024, month: 1, day: 30}}
+      {:ok, %Date{day: 30, month: 1, year: 2024}}
 
   """
   @spec verify(String.t()) :: {:ok, Date.t()} | {:error, any()}
@@ -62,6 +64,7 @@ defmodule NseDownloader do
 
   end
 
+  @spec create_item(list()) :: list() | {:error, String.t()}
   def create_item([
         symbol,
         series,
@@ -125,6 +128,7 @@ defmodule NseDownloader do
     end
   end
 
+  @spec insert_into_db(maybe_improper_list() | Ecto.Query.t()) :: {any(), nil | list()}
   def insert_into_db(val) do
     NseDownloader.Repo.insert_all(NseDownloader.Stock, val,
       on_conflict: :replace_all,
@@ -152,7 +156,7 @@ defmodule NseDownloader do
   def download(from, to) do
     with {:ok, f} <- verify(from),
          {:ok, t} <- verify(to),
-         :lt <- Date.compare(f,t),
+         x when x in [:lt, :eq] <- Date.compare(f,t),
          r = Date.range(f, t, 1) do
       dates = r |> Enum.to_list() |> Enum.map(& Date.to_string(&1))
       res = for d <- dates do
@@ -165,8 +169,7 @@ defmodule NseDownloader do
       {:ok, res}
     else
       {:error, msg} -> {:error, msg}
-      :gt -> {:error, "first date should be lesser than second date"}
-      :eq -> {:error, "first date should be lesser than second date"}
+      :gt -> {:error, "first date should be lesser than or equal to second date"}
     end
   end
 end
